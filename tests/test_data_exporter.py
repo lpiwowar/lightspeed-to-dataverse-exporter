@@ -6,6 +6,7 @@ import threading
 import time
 from unittest.mock import patch
 import io
+import pytest
 import requests
 import tarfile
 
@@ -269,7 +270,7 @@ class TestDataCollectorServiceRun:
             mock_gather.assert_called_with(mock_files)
             mock_package.assert_called()
             mock_delete.assert_called_with([Path("/test/file1.json")])
-            mock_ensure.assert_called_with(mock_files)
+            mock_ensure.assert_called_with()
 
     @patch("src.file_handler.FileHandler.collect_files")
     @patch("src.file_handler.FileHandler.gather_data_chunks")
@@ -405,3 +406,41 @@ class TestDataCollectorServiceRun:
                 mock_logger.info.assert_any_call(
                     "Retrying data collection in %d seconds...", custom_retry_interval
                 )
+
+    @patch("src.file_handler.FileHandler.collect_files")
+    @patch("src.file_handler.FileHandler.gather_data_chunks")
+    @patch("src.data_exporter.package_files_into_tarball")
+    @patch("src.file_handler.FileHandler.delete_collected_files")
+    @patch("src.file_handler.FileHandler.ensure_size_limit")
+    def test_ensure_size_limit_called_on_upload_failure(
+        self,
+        mock_ensure,
+        mock_delete,
+        mock_package,
+        mock_gather,
+        mock_collect,
+    ):
+        """Test ensure_size_limit is called when ingress returns non-202 status."""
+        mock_files = [(Path("/test/file1.json"), 100)]
+        mock_collect.return_value = mock_files
+        mock_gather.return_value = [[Path("/test/file1.json")]]
+        mock_package.return_value = io.BytesIO(b"tarball data")
+
+        mock_response = requests.Response()
+        mock_response.status_code = 500
+        mock_response._content = b'{"error": "internal server error"}'
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = create_test_config(data_dir=Path(tmpdir), collection_interval=0)
+            service = DataCollectorService(config)
+
+            with patch.object(
+                service.ingress_client,
+                "_upload_data_to_ingress",
+                return_value=mock_response,
+            ):
+                with pytest.raises(requests.RequestException):
+                    service.run()
+
+        mock_ensure.assert_called_once_with()
+        mock_delete.assert_not_called()

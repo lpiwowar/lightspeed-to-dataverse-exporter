@@ -717,34 +717,43 @@ class TestFileHandler:
         # Root directory should remain
         assert temp_data_dir.exists()
 
+    @patch("src.file_handler.FileHandler.collect_files")
     @patch("src.file_handler.delete_files")
-    def test_ensure_size_limit_under_limit(self, mock_delete_files, handler, caplog):
+    def test_ensure_size_limit_under_limit(
+        self, mock_delete_files, mock_collect_files, handler, caplog
+    ):
         """Test ensure_size_limit when under the limit."""
         # Create handler with large limit
         handler.max_data_dir_size = 1000
 
-        collected_files = [(Path("file1.json"), 100), (Path("file2.json"), 200)]
+        mock_collect_files.return_value = [
+            (Path("file1.json"), 100),
+            (Path("file2.json"), 200),
+        ]
 
         with caplog.at_level(logging.ERROR):
-            handler.ensure_size_limit(collected_files)
+            handler.ensure_size_limit()
 
         # Should not delete anything or log errors
         mock_delete_files.assert_not_called()
         assert "Data folder size is bigger" not in caplog.text
 
+    @patch("src.file_handler.FileHandler.collect_files")
     @patch("src.file_handler.delete_files")
-    def test_ensure_size_limit_over_limit(self, mock_delete_files, handler, caplog):
+    def test_ensure_size_limit_over_limit(
+        self, mock_delete_files, mock_collect_files, handler, caplog
+    ):
         """Test ensure_size_limit when over the limit."""
         # Create handler with small limit
         handler.max_data_dir_size = 100
 
-        collected_files = [
+        mock_collect_files.return_value = [
             (Path("file1.json"), 80),
             (Path("file2.json"), 60),  # Total: 140 > 100
         ]
 
         with caplog.at_level(logging.INFO):
-            handler.ensure_size_limit(collected_files)
+            handler.ensure_size_limit()
 
         # Should delete the first file (80 bytes removed, bringing total to 60 < 100)
         mock_delete_files.assert_called_once_with(
@@ -756,21 +765,22 @@ class TestFileHandler:
         )
         assert "Removing files to fit the data into the limit" in caplog.text
 
+    @patch("src.file_handler.FileHandler.collect_files")
     @patch("src.file_handler.delete_files")
     def test_ensure_size_limit_multiple_deletions(
-        self, mock_delete_files, handler, caplog
+        self, mock_delete_files, mock_collect_files, handler, caplog
     ):
         """Test ensure_size_limit when multiple files need deletion."""
         handler.max_data_dir_size = 50
 
-        collected_files = [
+        mock_collect_files.return_value = [
             (Path("file1.json"), 40),
             (Path("file2.json"), 30),
             (Path("file3.json"), 20),  # Total: 90 > 50
         ]
 
         with caplog.at_level(logging.INFO):
-            handler.ensure_size_limit(collected_files)
+            handler.ensure_size_limit()
 
         # Should delete first two files (70 bytes removed, bringing total to 20 < 50)
         expected_calls = [

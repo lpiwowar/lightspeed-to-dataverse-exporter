@@ -257,7 +257,7 @@ class FileHandler:
         """
         delete_files(file_paths, root_dir=self.data_dir)
 
-    def ensure_size_limit(self, collected_files: list[tuple[Path, int]]) -> None:
+    def ensure_size_limit(self) -> None:
         """Safeguard to prevent data directory overflow when export/cleanup fails.
 
         This method acts as a safety mechanism to prevent unbounded data accumulation
@@ -272,10 +272,8 @@ class FileHandler:
         order until the size limit is satisfied, preventing disk space exhaustion.
 
         The data are removed without any order or particular pattern
-
-        Args:
-            collected_files: List of tuples containing (file_path, file_size_bytes).
         """
+        collected_files = self.collect_files()
         data_size = sum(file_size for _, file_size in collected_files)
         if data_size > self.max_data_dir_size:
             logger.error(
